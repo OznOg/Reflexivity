@@ -74,7 +74,7 @@ namespace
     template<class C, class Visitor, std::size_t...Is>
     void visit_each(C & c, Visitor v, std::index_sequence<Is...>)
     {
-        (v(reflector::get_field_data<Is>(c)), ...);
+        (v(reflector::get_field_data<Is>(c).name(), reflector::get_field_data<Is>(c).get()), ...);
     }
     
 }
@@ -130,16 +130,16 @@ public:
 
 struct print_visitor
 {
-    template<class FieldData, typename std::enable_if<is_streamable<std::stringstream, decltype(((FieldData *)nullptr)->get())>::value>::type *x = nullptr>
-    void operator()(FieldData f)
+    template<class Data, std::enable_if_t<is_streamable<std::stringstream, Data>::value> *x = nullptr>
+    void operator()(const char *name, Data f)
     {
-        std::cout << "\"" << f.name() << "\" : \"" << f.get() << "\"," << std::endl;
+        std::cout << "\"" << name << "\" : \"" << f << "\"," << std::endl;
     }
-    template<class FieldData, typename std::enable_if<not is_streamable<std::stringstream, decltype(((FieldData *)nullptr)->get())>::value>::type *x = nullptr>
-    void operator()(FieldData f)
+    template<class Data, std::enable_if_t<not is_streamable<std::stringstream, Data>::value> *x = nullptr>
+    void operator()(const char *name, Data f)
     {
-        std::cout << "\"" << f.name() << "\" : {" << std::endl;
-        print_fields(f.get());
+        std::cout << "\"" << name << "\" : {" << std::endl;
+        print_fields(f);
         std::cout << "}" << std::endl;
     }
 };
