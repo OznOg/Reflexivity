@@ -2,6 +2,7 @@
 #include <boost/preprocessor.hpp>
 #include <utility>
 #include <type_traits>
+#include <sstream>
 #define REM(...) __VA_ARGS__
 #define EAT(...)
 // Retrieve the type
@@ -73,8 +74,7 @@ namespace
     template<class C, class Visitor, std::size_t...Is>
     void visit_each(C & c, Visitor v, std::index_sequence<Is...>)
     {
-        int dummy[] = {0, (v(reflector::get_field_data<Is>(c)), 0)...};
-        static_cast<void>(dummy);
+        (v(reflector::get_field_data<Is>(c)), ...);
     }
     
 }
@@ -98,14 +98,52 @@ private:
         (int) age
     )
 };
+
+struct Group {
+
+      Group(Person p1, Person p2): p1(p1), p2(p2) {}
+private:
+      REFLECTABLE
+      (
+      (Person) p1,
+      (Person) p2
+      )
+};
+
+template<class T>
+void print_fields(T & x);
+
+template<typename S, typename T>
+class is_streamable
+{
+    template<typename SS, typename TT>
+    static auto test(SS&& s, TT&& t) -> decltype(s << t);
+
+    struct dummy_t {};
+    static dummy_t test(...);
+
+    using return_type = decltype(test(std::declval<S>(), std::declval<T>()));
+
+public:
+    static const bool value = !std::is_same<return_type, dummy_t>::value;
+};
+
 struct print_visitor
 {
-    template<class FieldData>
+    template<class FieldData, typename std::enable_if<is_streamable<std::stringstream, decltype(((FieldData *)nullptr)->get())>::value>::type *x = nullptr>
     void operator()(FieldData f)
     {
-        std::cout << f.name() << "=" << f.get() << std::endl;
+        std::cout << "\"" << f.name() << "\" : \"" << f.get() << "\"," << std::endl;
+    }
+    template<class FieldData, typename std::enable_if<not is_streamable<std::stringstream, decltype(((FieldData *)nullptr)->get())>::value>::type *x = nullptr>
+    void operator()(FieldData f)
+    {
+        std::cout << "\"" << f.name() << "\" : {" << std::endl;
+        print_fields(f.get());
+        std::cout << "}" << std::endl;
     }
 };
+
 template<class T>
 void print_fields(T & x)
 {
@@ -113,6 +151,10 @@ void print_fields(T & x)
 }
 int main()
 {
-    Person p("Tom", 82);
-    print_fields(p);
+    Person p1("Tom", 82);
+    Person p2("Sam", 45);
+    const Group g(p1, p2);
+    std::cout << "{" << std::endl;
+    print_fields(g);
+    std::cout << "}" << std::endl;
 }
