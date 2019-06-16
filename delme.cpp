@@ -3,6 +3,7 @@
 #include <utility>
 #include <type_traits>
 #include <sstream>
+#include <json/json.h>
 #define REM(...) __VA_ARGS__
 #define EAT(...)
 // Retrieve the type
@@ -111,7 +112,7 @@ private:
 };
 
 template<class T>
-void print_fields(T & x);
+Json::Value print_fields(T & x);
 
 template<typename S, typename T>
 class is_streamable
@@ -130,31 +131,32 @@ public:
 
 struct print_visitor
 {
+    print_visitor(Json::Value &value) : value(value) {}
+    Json::Value &value;
+
     template<class Data, std::enable_if_t<is_streamable<std::stringstream, Data>::value> *x = nullptr>
     void operator()(const char *name, Data f)
     {
-        std::cout << "\"" << name << "\" : \"" << f << "\"," << std::endl;
+        value[name] = f;
     }
     template<class Data, std::enable_if_t<not is_streamable<std::stringstream, Data>::value> *x = nullptr>
     void operator()(const char *name, Data f)
     {
-        std::cout << "\"" << name << "\" : {" << std::endl;
-        print_fields(f);
-        std::cout << "}" << std::endl;
+        value[name] = print_fields(f);
     }
 };
 
 template<class T>
-void print_fields(T & x)
+Json::Value print_fields(T & x)
 {
-    visit_each(x, print_visitor());
+    Json::Value value;
+    visit_each(x, print_visitor(value));
+    return value;
 }
 int main()
 {
     Person p1("Tom", 82);
     Person p2("Sam", 45);
     const Group g(p1, p2);
-    std::cout << "{" << std::endl;
-    print_fields(g);
-    std::cout << "}" << std::endl;
+    std::cout << print_fields(g) << std::endl;
 }
