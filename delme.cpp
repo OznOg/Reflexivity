@@ -4,13 +4,9 @@
 #include <type_traits>
 #include <sstream>
 #include <json/json.h>
+#include <vector>
 #define REM(...) __VA_ARGS__
 #define EAT(...)
-// Retrieve the type
-#define TYPEOF(x) DETAIL_TYPEOF(DETAIL_TYPEOF_PROBE x,)
-#define DETAIL_TYPEOF(...) DETAIL_TYPEOF_HEAD(__VA_ARGS__)
-#define DETAIL_TYPEOF_HEAD(x, ...) REM x
-#define DETAIL_TYPEOF_PROBE(...) (__VA_ARGS__),
 // Strip off the type
 #define STRIP(x) EAT x
 // Show the type without parenthesis
@@ -84,33 +80,6 @@ void visit_each(C & c, Visitor v)
 {
     visit_each(c, v, std::make_index_sequence<reflector::fields<C>::n>{});
 }
-struct Person
-{
-    Person(const char *name, int age)
-        :
-        name(name),
-        age(age)
-    {
-    }
-private:
-    REFLECTABLE
-    (
-        (const char *) name,
-        (int) age
-    )
-};
-
-struct Group {
-
-      Group(Person p1, Person p2): p1(p1), p2(p2) {}
-private:
-      REFLECTABLE
-      (
-      (Person) p1,
-      (Person) p2
-      )
-};
-
 template<class T>
 Json::Value print_fields(T & x);
 
@@ -135,14 +104,26 @@ struct print_visitor
     Json::Value &value;
 
     template<class Data, std::enable_if_t<is_streamable<std::stringstream, Data>::value> *x = nullptr>
-    void operator()(const char *name, Data f)
+    void operator()(const char *name, const Data &f)
     {
         value[name] = f;
     }
     template<class Data, std::enable_if_t<not is_streamable<std::stringstream, Data>::value> *x = nullptr>
-    void operator()(const char *name, Data f)
+    void operator()(const char *name, const Data &f)
     {
         value[name] = print_fields(f);
+    }
+    template<class Data, std::enable_if_t<is_streamable<std::stringstream, Data>::value> *x = nullptr>
+    void operator()(const char *name, const std::vector<Data> &vf)
+    {
+        for (auto f : vf) 
+            value[name].append(f);
+    }
+    template<class Data, std::enable_if_t<not is_streamable<std::stringstream, Data>::value> *x = nullptr>
+    void operator()(const char *name, const std::vector<Data> &vf)
+    {
+        for (auto f : vf) 
+            value[name].append(print_fields(f));
     }
 };
 
@@ -153,10 +134,40 @@ Json::Value print_fields(T & x)
     visit_each(x, print_visitor(value));
     return value;
 }
+
+
+struct Person
+{
+    Person(const char *name, int age)
+        :
+        name(name),
+        age(age)
+    {
+    }
+private:
+    REFLECTABLE
+    (
+        (const char *) name,
+        (int) age
+    )
+};
+
+struct Group {
+
+      Group(Person p1, Person p2, Person p3): vp{p1, p2, p3}, vi{23, 45} {}
+private:
+      REFLECTABLE
+      (
+      (std::vector<Person>) vp,
+      (std::vector<int>) vi
+      )
+};
+
 int main()
 {
     Person p1("Tom", 82);
     Person p2("Sam", 45);
-    const Group g(p1, p2);
+    Person p3("Max", 38);
+    const Group g(p1, p2, p3);
     std::cout << print_fields(g) << std::endl;
 }
