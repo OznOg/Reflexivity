@@ -5,6 +5,7 @@
 #include <sstream>
 #include <json/json.h>
 #include <vector>
+#include <optional>
 #define REM(...) __VA_ARGS__
 #define EAT(...)
 // Strip off the type
@@ -29,6 +30,7 @@ friend struct reflector; \
 template<int N, class Self> \
 struct field_data {}; \
 BOOST_PP_SEQ_FOR_EACH_I(REFLECT_EACH, data, BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__))
+
 #define REFLECT_EACH(r, data, i, x) \
 PAIR(x); \
 template<class Self> \
@@ -59,6 +61,8 @@ struct reflector
     {
         return typename T::template field_data<N, T>(x);
     }
+    template<class T>
+    static T getEmpty() { return T(); }
     // Get the number of fields
     template<class T>
     struct fields
@@ -136,6 +140,48 @@ Json::Value print_fields(T & x)
 }
 
 
+struct deser_visitor
+{
+    deser_visitor(Json::Value &value) : value(value) {}
+    Json::Value &value;
+
+    template<class Data, std::enable_if_t<is_streamable<std::stringstream, Data>::value> *x = nullptr>
+    void operator()(const char *name, Data &f)
+    {
+        std::stringstream ss;
+        ss << value[name].asString();
+        ss >> f;
+    }
+    #if 0
+    template<class Data, std::enable_if_t<not is_streamable<std::stringstream, Data>::value> *x = nullptr>
+    void operator()(const char *name, Data &f)
+    {
+        value[name] = print_fields(f);
+    }
+    template<class Data, std::enable_if_t<is_streamable<std::stringstream, Data>::value> *x = nullptr>
+    void operator()(const char *name, std::vector<Data> &vf)
+    {
+        for (auto f : vf) 
+            value[name].append(f);
+    }
+    template<class Data, std::enable_if_t<not is_streamable<std::stringstream, Data>::value> *x = nullptr>
+    void operator()(const char *name, std::vector<Data> &vf)
+    {
+        for (auto f : vf) 
+            value[name].append(print_fields(f));
+    }
+    #endif
+};
+
+template<class T>
+void deser(std::optional<T> &x, Json::Value value)
+{
+    auto e = reflector::getEmpty<T>();
+    visit_each(e, deser_visitor(value));
+    x = e;
+}
+
+
 struct Person
 {
     Person(const char *name, int age)
@@ -145,9 +191,10 @@ struct Person
     {
     }
 private:
+    Person() {}
     REFLECTABLE
     (
-        (const char *) name,
+        (std::string) name,
         (int) age
     )
 };
@@ -169,5 +216,15 @@ int main()
     Person p2("Sam", 45);
     Person p3("Max", 38);
     const Group g(p1, p2, p3);
-    std::cout << print_fields(g) << std::endl;
+    std::stringstream ss;
+
+    auto serial = print_fields(g);
+
+    std::cout << serial << std::endl;
+
+    serial = print_fields(p1);
+    std::optional<Person> maybe_g;
+    deser(maybe_g, serial);
+
+    std::cout << print_fields(maybe_g.value()) << std::endl;
 }
