@@ -152,23 +152,32 @@ struct deser_visitor
         ss << value[name].asString();
         ss >> f;
     }
+    template<class Data, std::enable_if_t<is_streamable<std::stringstream, Data>::value> *x = nullptr>
+    void operator()(const char *name, std::vector<Data> &vf)
+    {
+        for (auto &f : value[name]) {
+            std::stringstream ss;
+            ss << f.asString();
+            Data d;
+            ss >> d;
+            vf.push_back(d);
+        }
+    }
+
+    template<class Data, std::enable_if_t<not is_streamable<std::stringstream, Data>::value> *x = nullptr>
+    void operator()(const char *name, std::vector<Data> &vf)
+    {
+        for (auto &f : value[name]) {
+            std::optional<Data> maybe_d;
+            deser(maybe_d, f);
+            vf.push_back(maybe_d.value());
+        }
+    }
     #if 0
     template<class Data, std::enable_if_t<not is_streamable<std::stringstream, Data>::value> *x = nullptr>
     void operator()(const char *name, Data &f)
     {
         value[name] = print_fields(f);
-    }
-    template<class Data, std::enable_if_t<is_streamable<std::stringstream, Data>::value> *x = nullptr>
-    void operator()(const char *name, std::vector<Data> &vf)
-    {
-        for (auto f : vf) 
-            value[name].append(f);
-    }
-    template<class Data, std::enable_if_t<not is_streamable<std::stringstream, Data>::value> *x = nullptr>
-    void operator()(const char *name, std::vector<Data> &vf)
-    {
-        for (auto f : vf) 
-            value[name].append(print_fields(f));
     }
     #endif
 };
@@ -187,13 +196,14 @@ struct Person
     Person(const char *name, int age)
         :
         name(name),
-        age(age)
+        age(age), vi{23, 45}
     {
     }
 private:
     Person() {}
     REFLECTABLE
     (
+        (std::vector<int>) vi,
         (std::string) name,
         (int) age
     )
@@ -201,12 +211,12 @@ private:
 
 struct Group {
 
-      Group(Person p1, Person p2, Person p3): vp{p1, p2, p3}, vi{23, 45} {}
+      Group(Person p1, Person p2, Person p3): vp{p1, p2, p3} {}
 private:
+      Group() = default;
       REFLECTABLE
       (
-      (std::vector<Person>) vp,
-      (std::vector<int>) vi
+      (std::vector<Person>) vp
       )
 };
 
@@ -222,8 +232,8 @@ int main()
 
     std::cout << serial << std::endl;
 
-    serial = print_fields(p1);
-    std::optional<Person> maybe_g;
+    serial = print_fields(g);
+    std::optional<Group> maybe_g;
     deser(maybe_g, serial);
 
     std::cout << print_fields(maybe_g.value()) << std::endl;
